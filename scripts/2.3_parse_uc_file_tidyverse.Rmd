@@ -1,0 +1,162 @@
+## ------------------------------------------------------------------------------
+# set some general options
+# options(echo=TRUE) # if you want see commands in output file
+# args <- commandArgs(trailingOnly = TRUE) # if you want to pass arguments to R from the shell (bash) command line
+# print(args)
+# 
+# begumfilter <- args[1]
+# folder <- args[2]
+
+
+## --------------------------------------------------------------------------------------------
+# alt-cmd-enter
+library(tidyverse)
+library(magrittr)
+library(here)
+library(glue)
+library(tictoc)
+library(inspectdf)
+library(collapse)
+library(sjmisc)
+here()
+
+## --------------------------------------------------------------------------------------------
+# if chimeras had been removed
+inputuc <- here("Filter_min*PCRs_min*copies_forusearch_nonchimeras_vsearch99.uc")
+
+dfall <- read_tsv(file = inputuc,
+               col_names = c("Record_Type",
+                             "Cluster_Number",
+                             "Centroid_Length",
+                             "Percentage_Similarity",
+                             "Match_Orientation",
+                             "NA1",
+                             "NA2",
+                             "Representation",
+                             "Query_Sequence_Label",
+                             "Centroid_Sequence_Label"),
+               na = "NA",
+               ) %>% 
+    select(-NA1, -NA2) 
+
+dfcentroids <- dfall %>% # names of all the OTUs
+    filter(Record_Type == "C")
+
+df <- dfall %>% # input to making OTU tables
+    filter(Record_Type != "C")
+
+# uncomment to make small df for debugging
+# dfsm <- df %>% slice_sample(n = 30000); df <- dfsm
+
+
+## --------------------------------------------------------------------------------------------
+## ----separate Query_Sequence_Label-------------------------------
+df <- df %>% 
+    separate(col = Query_Sequence_Label, 
+             into = c("tmp1", "Size"), 
+             sep = ";") %>% 
+    mutate(Size = str_remove(Size, "size=")) %>% 
+    separate(col = tmp1, 
+             into = c("Sample", "PCRs"), 
+             sep = "--") %>% 
+    separate(col = PCRs,
+             into = c("PCR1", "PCR2", "PCR3", "PCR4", "PCR5", "PCR6"), 
+             sep = "_") # automatically ignores the 7th number, which is from seqkit rename's index, but does give a warning message about "Expected 3 pieces"
+
+df %>% distinct(Cluster_Number) %>% dplyr::count() # clusters
+
+# might take a long time
+otutab <- function(data, pcr) {
+    data %>% 
+        group_by(Cluster_Number, Sample) %>% 
+        summarise(
+            PCR = sum(as.numeric(get(glue("PCR{pcr}"))))
+        ) %>% 
+        pivot_wider(
+            names_from = Sample, # column names
+            values_from = PCR,
+            values_fill = 0
+        ) %>% 
+        relocate(Cluster_Number)
+}
+
+
+tic(); OTUtable1 <- otutab(data = df, pcr = 1); toc() # 15.574 sec elapsed
+OTUtable2 <- otutab(data = df, pcr = 2)
+OTUtable3 <- otutab(data = df, pcr = 3)
+OTUtable4 <- otutab(data = df, pcr = 4)
+OTUtable5 <- otutab(data = df, pcr = 5)
+OTUtable6 <- otutab(data = df, pcr = 6)
+
+
+## --------------------------------------------------------------------------------------------
+# simplify centroid sequences and separate into sequence ID and orig seed sequence size
+dfcentroids_select <- dfcentroids %>% 
+    select(Cluster_Number, Query_Sequence_Label) %>% 
+    separate(col = Query_Sequence_Label,
+             into = c("Query_Sequence_Label", "Seed_size"),
+             sep = ";") %>% 
+    mutate(Seed_size = str_remove(Seed_size, "size="))
+
+## join centroid identifying information to OTU tables
+otutabjoin <- function(dfctr, OTUtab) {
+    left_join(dfctr, OTUtab, by = ("Cluster_Number"))
+}
+
+tic(); OTUtable1_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable1); toc()
+OTUtable2_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable2)
+OTUtable3_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable3)
+OTUtable4_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable4)
+OTUtable5_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable5)
+OTUtable6_centroids <- otutabjoin(dfctr = dfcentroids_select, OTUtab = OTUtable6)
+
+# --------------------------------------------------------------------------------------------
+# read in protax taxonomies, which are the products of *_protax.Rmd
+gene <- "_12S"
+(inputprotax <- here("OTUtables", 
+                     glue("protaxout{gene}_weighted.tsv")
+))
+
+protaxout <- read_delim(inputprotax, 
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE) 
+
+protaxout_clean <- protaxout %>% 
+  separate(col = queryID, 
+           into = c("QueryID", "Size"), 
+           sep = ";") %>% 
+  mutate(Size = str_remove(Size, "size="))
+
+otutabjoin2 <- function(protaxtab, OTUtab) {
+  left_join(protaxtab, OTUtab, by = c("QueryID" = "Query_Sequence_Label")) %>% 
+    relocate(Cluster_Number, QueryID, Size, Seed_size)
+}
+
+# add OTUs which were mapped to spike-in to protaxout
+# remember to add "queryID	bestHit	bestHit_similarity" as the first new line in "match_list_spikein.txt"
+SI <- read_delim(here("match_list_spikein.txt"), delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+SI <- SI %>% mutate(bestHit_similarity = bestHit_similarity/100)
+SI <- SI %>% separate(col = queryID, into = c("QueryID", "Size"), sep = ";") %>% mutate(Size = str_remove(Size, "size="))
+
+library(plyr)
+protaxoutSI <- rbind.fill(protaxout_clean,SI)
+
+OTUtable1_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable1_centroids)
+OTUtable2_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable2_centroids)
+OTUtable3_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable3_centroids)
+OTUtable4_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable4_centroids)
+OTUtable5_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable5_centroids)
+OTUtable6_all <- otutabjoin2(protaxtab = protaxoutSI, OTUtab = OTUtable6_centroids)
+
+
+## --------------------------------------------------------------------------------------------
+## ----write OTU tables---------------------------------------------
+
+write_tsv(get("OTUtable1_all"), file = "OTUtable_12S_1.txt")
+write_tsv(get("OTUtable2_all"), file = "OTUtable_12S_2.txt")
+write_tsv(get("OTUtable3_all"), file = "OTUtable_12S_3.txt")
+write_tsv(get("OTUtable4_all"), file = "OTUtable_12S_4.txt")
+write_tsv(get("OTUtable5_all"), file = "OTUtable_12S_5.txt")
+write_tsv(get("OTUtable6_all"), file = "OTUtable_12S_6.txt")
+
+

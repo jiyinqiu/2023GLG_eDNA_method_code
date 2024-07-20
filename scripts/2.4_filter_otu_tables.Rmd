@@ -1,0 +1,229 @@
+---
+title: "2.4_filter_OTU_tables.Rmd"
+author: "Douglas Yu", modified by JYQ
+date: "25/08/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(magrittr)
+library(here)
+library(glue)
+library(tictoc)
+library(inspectdf)
+library(collapse)
+library(sjmisc)
+here()
+```
+
+```{r read tables}
+# folder <- "hja" # hja, kafa, leeches, ukponds, leeches2018
+date <- "20240528"
+
+OTUtable1_orig <- read_tsv(here("OTUtable_12S_1.txt"), trim_ws = TRUE)
+OTUtable2_orig <- read_tsv(here("OTUtable_12S_2.txt"), trim_ws = TRUE)
+OTUtable3_orig <- read_tsv(here("OTUtable_12S_3.txt"), trim_ws = TRUE)
+OTUtable4_orig <- read_tsv(here("OTUtable_12S_4.txt"), trim_ws = TRUE)
+OTUtable5_orig <- read_tsv(here("OTUtable_12S_5.txt"), trim_ws = TRUE)
+OTUtable6_orig <- read_tsv(here("OTUtable_12S_6.txt"), trim_ws = TRUE)
+```
+
+```{r filter}
+# filter out un-ID'd OTUs and human OTUs, remove samples starting with "HUMAN"
+filter1 <- function(otutab) {
+  otutab %>%
+    filter(order != "root,unk") %>%
+    filter(family != "Primates,unk", family != "Primates,Hominidae") %>%
+    select(-starts_with("HUMAN"))
+}
+
+OTUtable1 <- filter1(OTUtable1_orig)
+OTUtable2 <- filter1(OTUtable2_orig)
+OTUtable3 <- filter1(OTUtable3_orig)
+OTUtable4 <- filter1(OTUtable4_orig)
+OTUtable5 <- filter1(OTUtable5_orig)
+OTUtable6 <- filter1(OTUtable6_orig)
+# rm(OTUtable1_test, OTUtable2_test, OTUtable3_test)
+```
+
+split into two OTU tables, one with "unk" or NA in genus or in species
+
+```{r}
+# filter2 <- function(otutab) {
+#   otutab %>%
+#     filter(is.na(species) | str_detect(genus, "unk") | str_detect(species, "unk"))
+# }
+# 
+# OTUtable1_unk <- filter2(OTUtable1)
+# OTUtable2_unk <- filter2(OTUtable2)
+# OTUtable3_unk <- filter2(OTUtable3)
+# OTUtable4_unk <- filter2(OTUtable4)
+# OTUtable5_unk <- filter2(OTUtable5)
+# OTUtable6_unk <- filter2(OTUtable6)
+
+filter3 <- function(otutab) {
+  otutab %>%
+    filter(!str_detect(genus, "unk") & !str_detect(species, "unk") & !is.na(species))
+}
+
+OTUtable1_no_unk <- filter3(OTUtable1)
+OTUtable2_no_unk <- filter3(OTUtable2)
+OTUtable3_no_unk <- filter3(OTUtable3)
+OTUtable4_no_unk <- filter3(OTUtable4)
+OTUtable5_no_unk <- filter3(OTUtable5)
+OTUtable6_no_unk <- filter3(OTUtable6)
+```
+
+```{r summarise}
+(metadatacols <- colnames(OTUtable1)[1:17])
+#  [1] "Cluster_Number"     "QueryID"            "Size"              
+#  [4] "Seed_size"          "class"              "prob_class"        
+#  [7] "order"              "prob_order"         "family"            
+# [10] "prob_family"        "genus"              "prob_genus"        
+# [13] "species"            "prob_species"       "bestHit_similarity"
+# [16] "bestHit"            "protaxmod"   
+
+summarise1 <- function(otutab) {
+  otutab %>%
+    group_by(species) %>%
+    summarise(
+      Cluster_Number = first(Cluster_Number),
+      QueryID = first(QueryID),
+      Size = sum(Size),
+      class = first(class),
+      order = first(order),
+      family = first(family),
+      genus = first(genus),
+      species = first(species),
+      across(-any_of(metadatacols), sum)
+    ) %>%
+    relocate(species, .after = genus)
+}
+
+
+filter3 <- function(otutab) {
+  otutab %>%
+    filter(bestHit == "spikein12S-202210") %>%
+    group_by(bestHit) %>%
+    summarise(
+      Cluster_Number = first(Cluster_Number),
+      QueryID = first(QueryID),
+      Size = sum(Size),
+      class = first(class),
+      order = first(order),
+      family = first(family),
+      genus = first(genus),
+      species = "Spike-in-12S",
+      across(-any_of(metadatacols), sum)
+    ) %>%
+    relocate(species, .after = genus) %>% 
+    select(-bestHit)
+}
+
+SI_OTUtable1 <- filter3(OTUtable1_orig)
+SI_OTUtable2 <- filter3(OTUtable2_orig)
+SI_OTUtable3 <- filter3(OTUtable3_orig)
+SI_OTUtable4 <- filter3(OTUtable4_orig)
+SI_OTUtable5 <- filter3(OTUtable5_orig)
+SI_OTUtable6 <- filter3(OTUtable6_orig)
+
+OTUtable1_no_unk_summ <- summarise1(OTUtable1_no_unk)
+OTUtable2_no_unk_summ <- summarise1(OTUtable2_no_unk)
+OTUtable3_no_unk_summ <- summarise1(OTUtable3_no_unk)
+OTUtable4_no_unk_summ <- summarise1(OTUtable4_no_unk)
+OTUtable5_no_unk_summ <- summarise1(OTUtable5_no_unk)
+OTUtable6_no_unk_summ <- summarise1(OTUtable6_no_unk)
+
+```
+
+
+```{r bind rows}
+names(OTUtable1_no_unk_summ) 
+# names(OTUtable1_unk_summ)
+names(SI_OTUtable1)
+
+OTUtable1_toSP_reduced <- bind_rows(OTUtable1_no_unk_summ, SI_OTUtable1)
+OTUtable2_toSP_reduced <- bind_rows(OTUtable2_no_unk_summ, SI_OTUtable2)
+OTUtable3_toSP_reduced <- bind_rows(OTUtable3_no_unk_summ, SI_OTUtable3)
+OTUtable4_toSP_reduced <- bind_rows(OTUtable4_no_unk_summ, SI_OTUtable4)
+OTUtable5_toSP_reduced <- bind_rows(OTUtable5_no_unk_summ, SI_OTUtable5)
+OTUtable6_toSP_reduced <- bind_rows(OTUtable6_no_unk_summ, SI_OTUtable6)
+
+# nanorana_not <- OTUtable1_reduced %>%
+#   filter(!str_detect(genus, "Nanorana") | !str_detect(species, "Nanorana"))
+# nanorana <- OTUtable1_reduced %>%
+#   filter(str_detect(genus, "Nanorana") | str_detect(species, "Nanorana"))
+```
+
+```{r}
+# add class into the tables
+class_order <- read_delim(here("Vertebrata_class_order.txt"), 
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE) 
+OTUtable1_toSP_withCLASS <- merge(OTUtable1_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+OTUtable2_toSP_withCLASS <- merge(OTUtable2_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+OTUtable3_toSP_withCLASS <- merge(OTUtable3_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+OTUtable4_toSP_withCLASS <- merge(OTUtable4_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+OTUtable5_toSP_withCLASS <- merge(OTUtable5_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+OTUtable6_toSP_withCLASS <- merge(OTUtable6_toSP_reduced, class_order, by = "order", all.x = TRUE) %>% 
+  select(-(class.x:genus)) %>% select(-order) %>% relocate(class.y, .before = species)
+
+```
+
+```{r}
+OTUID_new <- function(otuid) {
+  otuid %>%
+    arrange(Cluster_Number) %>% 
+    select(-QueryID) %>% 
+    unite(col = "OTU", Cluster_Number:Size, sep = "_",) %>% 
+    mutate(OTU = str_c("OTU", OTU))  %>% 
+    select(!contains(c("Cluster_Number", "Size"))) %>% 
+    relocate(OTU, .before = 1) %>% 
+    unite(col = "SP", class.y:species, sep = "_",) %>% 
+    select(!contains(c("class.y", "species"))) %>% 
+    relocate(SP, .before = 1) %>% 
+    mutate(SP = gsub(",", "_", SP)) %>% 
+    unite(col = "OTU", SP:OTU, sep = "_",) %>% 
+    rotate_df(cn = TRUE, rn = "SampleID") 
+}
+
+OTUtable1_toSP <- OTUID_new(OTUtable1_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 1) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+OTUtable2_toSP <- OTUID_new(OTUtable2_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 2) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+OTUtable3_toSP <- OTUID_new(OTUtable3_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 3) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+OTUtable4_toSP <- OTUID_new(OTUtable4_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 4) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+OTUtable5_toSP <- OTUID_new(OTUtable5_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 5) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+OTUtable6_toSP <- OTUID_new(OTUtable6_toSP_withCLASS) %>% rename_with(~str_replace(., "^NA_", ""), everything()) %>% rename_with(~str_replace(., "Spike-in-12S", "Spikein12S"), everything()) %>% mutate(PCR = 6) %>% relocate(PCR, .before = 2) %>% relocate(Spikein12S_OTU27_8955200, .before = 3)
+
+```
+
+```{r}
+sample_info <- read_delim(here("23GLG_Samples_info.txt"), 
+                        delim = "\t", escape_double = FALSE, 
+                        trim_ws = TRUE) 
+
+OTUtable1_toSP_withINFO <- left_join(OTUtable1_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+OTUtable2_toSP_withINFO <- left_join(OTUtable2_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+OTUtable3_toSP_withINFO <- left_join(OTUtable3_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+OTUtable4_toSP_withINFO <- left_join(OTUtable4_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+OTUtable5_toSP_withINFO <- left_join(OTUtable5_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+OTUtable6_toSP_withINFO <- left_join(OTUtable6_toSP, sample_info, by = "SampleID") %>% relocate((site:DistFromPAedge), .before = "Spikein12S_OTU27_8955200")
+
+OTUtable_toSP_withINFO_all <- bind_rows(OTUtable1_toSP_withINFO, 
+                                        OTUtable2_toSP_withINFO, 
+                                        OTUtable3_toSP_withINFO, 
+                                        OTUtable4_toSP_withINFO, 
+                                        OTUtable5_toSP_withINFO, 
+                                        OTUtable6_toSP_withINFO) %>% 
+  arrange(SampleID)
+
+write_tsv(get("OTUtable_toSP_withINFO_all"), file = "OTUtable_12S_toSP_GLG23_20240528.txt")
+
+```

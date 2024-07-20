@@ -1,0 +1,347 @@
+# This pipeline is tested on macOS only.
+
+# In order to run DAMe and facilitate file management, create the necessary folder structure and transfer data and the other related files into the appropriate folders
+# File tree of the pipeline package after placing Illumina sequence data in the correct folders:
+
+2023GLG_eDNA_method_code
+   |                 command_history_eDNA_23GLG.txt
+   |                 
+   +-----------------analysis
+   +-----------------data
+   |                   |
+   |                   \---raw_data
+   |                          |
+   |                          \---12S
+   |                               |
+   |                               +---G12S9
+   |                               |       G12S9_1.fq.gz
+   |                               |       G12S9_2.fq.gz
+   |                               +---G12S11
+   |                               |       G12S11_1.fq.gz
+   |                               |       G12S11_2.fq.gz
+   |                               +---G12S12
+   |                               |       G12S12_1.fq.gz
+   |                               |       G12S12_2.fq.gz
+   |                               +---G12S13
+   |                               |       G12S13_1.fq.gz
+   |                               |       G12S13_2.fq.gz
+   |                               +---G12S14
+   |                               |       G12S14_1.fq.gz
+   |                               |       G12S14_2.fq.gz
+   |                               +---G12S15
+   |                               |       G12S15_1.fq.gz
+   |                               |       G12S15_2.fq.gz
+   |                               +---G12S16
+   |                               |       G12S16_1.fq.gz
+   |                               |       G12S16_2.fq.gz
+   |                               +---G12S17
+   |                               |       G12S17_1.fq.gz
+   |                               |       G12S17_2.fq.gz
+   |                               +---G12S18
+   |                               |       G12S18_1.fq.gz
+   |                               |       G12S18_2.fq.gz
+   |                               +---G12S19
+   |                               |       G12S19_1.fq.gz
+   |                               |       G12S19_2.fq.gz
+   |                               \----additional libraries
+   |                          
+   +-----------------info
+   |                     12S_pool_info.txt
+   |                     12S_uchime_ref.fas
+   |                     23GLG_Samples_info.txt
+   |                     PCRsetsInfo_12S_Controls.txt
+   |                     PCRsetsInfo_12S.txt
+   |                     Primers_12S.txt
+   |                     spikein12S_2022.fas
+   |                     Tags_eDNA_2023Jan.txt
+   |                     Vertebrata_class_order.txt
+   |
+   \-----------------scripts
+   						 _loop_fastp.sh
+   						 _loop_DAMe_sort_12S_afterFastp.sh
+   						 2.1_sum_reads_for_usearch.Rmd
+   						 2.2_combine_protax_output_tables.Rmd
+   						 2.3_parse_uc_file_tidyverse.Rmd
+   						 2.4_filter_otu_tables.Rmd
+   
+   
+   # This folder structure matches the pathnames used in the bioinformatic pipeline.
+   
+   # run script from 2023GLG_eDNA_method_code/scripts
+   # fq.gz files in 2023GLG_eDNA_method_code/data/raw_data/12S/*/
+   # info files about primers, tags and PCR_sets in 2023GLG_eDNA_method_code/info/
+   # analysis outputs in 2023GLG_eDNA_method_code/analysis/
+
+
+# Required software
+
+	# Install Homebrew for macOS
+		# Go to http://brew.sh and follow the instructions for installing Homebrew on macOS
+	
+	# Install these software packages using Homebrew
+		brew update; brew upgrade; brew cleanup # get the latest version homebrew
+		brew tap brewsci/bio # a "tap" is a repository of "installation formulas" of specialist software, here, bioinformatics
+		brew install gnu-sed # (gsed == GNU version of sed == Linux version of sed)
+		brew install grep # gnu-grep
+		brew install gawk # gnu-awk
+		brew install fastp # http://github.com/OpenGene/fastp
+		brew install vsearch # https://github.com/torognes/vsearch
+		brew install seqkit # https://github.com/shenwei356/seqkit
+		brew install python@2
+		brew cleanup # remove unneeded files
+	
+	# Download DAMe from https://github.com/shyamsg/DAMe (Zepeda-Mendoza et al. 2016, BMC Research Notes)
+		# the DAMe folder "DAMe-master-2" is located in /Users/jiyinqiu/Download
+
+# This pipeline runs in the /Users/jiyinqiu/src/ directory on a local MacBook. Therefore, others should change the "/Users/jiyinqiu/src/" path to match their local directory when downloading and using this pipeline.
+
+###################################################################################################################################################
+
+# use FASTP to preprocess the raw data from quality control to merging pair-end reads
+	
+	cd /Users/jiyinqiu/src/2023GLG_eDNA_method_code/
+	bash scripts/_loop_fastp.sh
+
+###################################################################################################################################################
+
+# DAMe SORT
+
+	cd /Users/jiyinqiu/src/2023GLG_eDNA_method_code/
+	bash scripts/_loop_DAMe_sort_12S_afterFastp.sh
+
+###################################################################################################################################################
+#### DAMe filter - using PCR replicates and read numbers to filter out bad reads
+   # First fitler.py at -y 1 -t 1 to keep all sequences in the control samples, confirm MINPCR and MINREADS values through the controls' outputs
+   #  -psInfo PSINFO        Text file with the information on the tag combination
+   #                        in each PCR reaction for every sample [Format:
+   #                        sampleName TagNameForwardFromPCR1
+   #                        TagNameReverseFromPCR1 Pool# sampleName
+   #                        TagNameForwardFromPCR2 TagNameReverseFromPCR2 Pool#
+   #                        ...]
+   #  -x X                  Number of PCR rxns performed per sample
+   #  -y Y                  Number of PCR rxns in which the sequence has to be
+   #                        present
+   #  -p P                  The number of pools in which the samples were divided
+   #                        for sequencing (in case of tag combinations repetition
+   #                        due to processing so many samples) [default 1] NOTE:
+   #                        If using pools, each fastq must be in a folder called
+   #                        pool#, in which the sort.py was run for each pool
+   #                        inside the corresponding folder, and this program
+   #                        chimeraCheck.py is run in the parent directory of the
+   #                        pools directories
+   #  -t T                  Number of times a unique sequence has to be present
+   #  -l L                  Minimum sequence length
+
+#  Filter with controls data first to identify possible sources of contamination
+	cd /Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/
+	mkdir Filter_min1PCRs_min1copies_12S_Controls
+	python2 /Users/jiyinqiu/Downloads/DAMe-master-2/bin/filter.py -psInfo /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/PCRsetsInfo_12S_Controls.txt -x 6 -y 1 -p 18 -t 1 -l 75 -o Filter_min1PCRs_min1copies_12S_Controls
+	cd Filter_min1PCRs_min1copies_12S_Controls
+	# modify the file "FilteredReads.fna" in BBEdit to remove all the sequences with “.+/0/0/0/0/0”, “0/.+/0/0/0/0”, “0/0/.+/0/0/0”, “0/0/0/.+/0/0”, “0/0/0/0/.+/0” or “0/0/0/0/0/.+” in the IDs, save as the new file "FilteredReads_modified.fna"，from 792,884 to 154,944 sequences
+	# check if there is the spike-in sequence in controls data, matching unique query sequences: 0 of 154,944 (0%)
+		cat FilteredReads_modified.fna | tr '\t' '#' | sed 's/##/#/g' > FilteredReads_modified.fas
+		vsearch --usearch_global FilteredReads_modified.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/spikein12S_2022.fas --id 0.96 --iddef 1 --query_cov .9 --matched FilteredReads_modified_spikeinMATCH.fas --notmatched FilteredReads_modified_spikeinUNMATCH.fas --userout match_list_spikein.txt -userfields query+target+id --fasta_width 0
+	# remove the chimeric sequences
+		vsearch --sortbysize FilteredReads_modified_spikeinUNMATCH.fas --output FilteredReads_modified_spikeinUNMATCH_sorted.fas --fasta_width 0
+		vsearch --uchime_ref FilteredReads_modified_spikeinUNMATCH.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas --threads 6 --nonchimeras FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras.fas
+		# notes: 12S_uchime_ref.fas is created by adding the spike-in sequence into the 12S PROTAX reference database (Vertebrata.final_database.12S.fa from http://github.com/jiyinqiu/screenforbio-mbc-23GLG)
+	# cluster OTUs
+		mkdir FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras_id97
+		vsearch --cluster_size FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras.fas --sizein --sizeout --id 0.97 --sizeorder --centroids FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras_vsearch97.fas --otutabout FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras_otutabout.txt --fasta_width 0 --clusters FilteredReads_modified_spikeinUNMATCH_sorted_nonchimeras_id97/cluster
+	# BLAST in NCBI Genbank, exclude OTUs identified as human DNA, the specific contamination is as follows:
+		# JNC1, contamination of the only species - Gallus gallus: JNC1#Tag02-Tag16.Tag03-Tag17.Tag04-Tag18.Tag05-Tag19.Tag06-Tag20.Tag07-Tag21_54355#0_0_1_0_0_7595
+		# JNC7, contamination of the only species - Sus scrofa: JNC7#Tag14-Tag81.Tag15-Tag82.Tag16-Tag83.Tag17-Tag84.Tag18-Tag85.Tag19-Tag86_1175#0_0_1_1_1_0
+		# JNC13, contamination of the only species - Schizothorax sp.: JNC13#Tag76-Tag97.Tag77-Tag98.Tag78-Tag99.Tag79-Tag02.Tag80-Tag03.Tag81-Tag04_49496#1_1_2_0_0_0
+		# JNC19, contamination of the only species - Sus scrofa: JNC19#Tag88-Tag14.Tag89-Tag15.Tag90-Tag16.Tag91-Tag17.Tag92-Tag18.Tag93-Tag19_17492#1_225_0_0_0_0
+		# JNC23, contamination of the only species - Sus scrofa: JNC23#Tag20-Tag96.Tag21-Tag97.Tag22-Tag98.Tag23-Tag99.Tag24-Tag02.Tag25-Tag03_3388#0_0_0_2_0_1
+		# YNC14, contamination of 2 species - 
+			Bos indicus: YNC14#Tag02-Tag89.Tag03-Tag90.Tag04-Tag91.Tag05-Tag92.Tag06-Tag93.Tag07-Tag94_21204#1_1_1_1_0_0
+			Schistura yingjiangensis: YNC14#Tag02-Tag89.Tag03-Tag90.Tag04-Tag91.Tag05-Tag92.Tag06-Tag93.Tag07-Tag94_24655#1_1_1_0_0_0
+		# YNC15, contamination of 2 species - 
+			Schistura yingjiangensis: YNC15#Tag14-Tag04.Tag15-Tag05.Tag16-Tag06.Tag17-Tag07.Tag18-Tag08.Tag19-Tag09_3976#0_1_0_0_0_2
+			Gallus gallus: YNC15#Tag14-Tag04.Tag15-Tag05.Tag16-Tag06.Tag17-Tag07.Tag18-Tag08.Tag19-Tag09_745#1_0_2_0_1_0
+		# YNC17, contamination of 2 species - 
+			Schistura yingjiangensis: YNC17#Tag76-Tag17.Tag77-Tag18.Tag78-Tag19.Tag79-Tag20.Tag80-Tag21.Tag81-Tag22_28476#1_0_1_0_0_0
+			Sus scrofa: YNC17#Tag76-Tag17.Tag77-Tag18.Tag78-Tag19.Tag79-Tag20.Tag80-Tag21.Tag81-Tag22_14238#0_0_0_1_2_0
+		# YNC18, contamination of 3 species - 
+			Sus scrofa: YNC18#Tag94-Tag87.Tag95-Tag88.Tag96-Tag89.Tag97-Tag90.Tag98-Tag91.Tag99-Tag92_16282#0_1_1_1_21793_0
+			Schizothorax sp.: YNC18#Tag94-Tag87.Tag95-Tag88.Tag96-Tag89.Tag97-Tag90.Tag98-Tag91.Tag99-Tag92_34862#0_0_1_1_0_0
+			Xenophrys glandulosa: YNC18#Tag94-Tag87.Tag95-Tag88.Tag96-Tag89.Tag97-Tag90.Tag98-Tag91.Tag99-Tag92_44171#0_1_0_0_1_0
+		# YNC19, contamination of 3 species - 
+			Sus scrofa: YNC19#Tag88-Tag82.Tag89-Tag83.Tag90-Tag84.Tag91-Tag85.Tag92-Tag86.Tag93-Tag87_7664#1_0_1_0_0_0
+			Gallus gallus: YNC19#Tag88-Tag82.Tag89-Tag83.Tag90-Tag84.Tag91-Tag85.Tag92-Tag86.Tag93-Tag87_266#1_0_0_0_1_0
+			Pseudexostoma yunnanensis/Creteuchiloglanis macropterus/Creteuchiloglanis gongshanensis/Bagarius yarrelli: YNC19#Tag88-Tag82.Tag89-Tag83.Tag90-Tag84.Tag91-Tag85.Tag92-Tag86.Tag93-Tag87_18053#0_0_1_1_0_0
+		# YNC21, contamination of 6 species - 
+			Sus scrofa: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_27409#25787_42099_44087_0_27005_0
+			Gallus gallus: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_957#0_0_0_1_19378_36184
+			Ochotona curzoniae: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_64684#2_0_1_0_0_0
+			Schistura yingjiangensis: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_29459#0_0_2_0_0_1
+			Bubalus bubalis: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_66428#0_1_0_0_0_1
+			Devario interruptus: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_9733#0_0_1_0_0_1
+		# YNC22, contamination of 2 species - 
+			Sus scrofa: >YNC22#Tag82-Tag79.Tag83-Tag80.Tag84-Tag81.Tag85-Tag82.Tag86-Tag83.Tag87-Tag84_22918#183259_226030_192732_196630_88942_223068
+			Abbottina rivularis: YNC22#Tag82-Tag79.Tag83-Tag80.Tag84-Tag81.Tag85-Tag82.Tag86-Tag83.Tag87-Tag84_44625#1_0_1_0_0_0
+
+	# Filter with controls data with min3PCRs and min2copies to check again
+		cd analysis/DAMe_SORT_outputs_12S/
+		mkdir Filter_min3PCRs_min2copies_12S_Controls
+		python2 /Users/jiyinqiu/Downloads/DAMe-master-2/bin/filter.py -psInfo /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/PCRsetsInfo_12S_Controls.txt -x 6 -y 3 -p 18 -t 2 -l 75 -o Filter_min3PCRs_min2copies_12S_Controls
+		cd Filter_min3PCRs_min2copies_12S_Controls
+		cat FilteredReads.fna | tr '\t' '#' | sed 's/##/#/g' > FilteredReads.fas
+		vsearch --sortbysize FilteredReads.fas --output FilteredReads_sorted.fas --fasta_width 0
+		vsearch --uchime_ref FilteredReads_sorted.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas --threads 6 --nonchimeras FilteredReads_sorted_nonchimeras.fas
+		mkdir FilteredReads_sorted_nonchimeras_id97
+		vsearch --cluster_size FilteredReads_sorted_nonchimeras.fas --sizein --sizeout --id 0.97 --sizeorder --centroids FilteredReads_sorted_nonchimeras_vsearch97.fas --otutabout FilteredReads_sorted_nonchimeras_otutabout.txt --fasta_width 0 --clusters FilteredReads_sorted_nonchimeras_id97/cluster
+	# BLAST in NCBI Genbank, exclude OTUs identified as human DNA, the specific contamination is as follows:
+		# YNC21, contamination of 1 species - 
+			Sus scrofa: YNC21#Tag20-Tag16.Tag21-Tag17.Tag22-Tag18.Tag23-Tag19.Tag24-Tag20.Tag25-Tag21_27409#25787_42099_44087_0_27005_0
+		# YNC22, contamination of 1 species - 
+			Sus scrofa: >YNC22#Tag82-Tag79.Tag83-Tag80.Tag84-Tag81.Tag85-Tag82.Tag86-Tag83.Tag87-Tag84_22918#183259_226030_192732_196630_88942_223068
+	
+
+# DAMe filter with all data —— min3PCRs_min2copies
+	cd analysis/DAMe_SORT_outputs_12S/
+	mkdir Filter_min3PCRs_min2copies_12S
+	python2 /Users/jiyinqiu/Downloads/DAMe-master-2/bin/filter.py -psInfo /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/PCRsetsInfo_12S.txt -x 6 -y 3 -p 42 -t 2 -l 75 -o Filter_min3PCRs_min2copies_12S
+	# The original DAMe pipeline combines all the independent PCRs of the same sample into the output. But the subsequent statistical analyses in this study require data from independent PCRs, so the next steps here are different from the original DAMe pipeline
+		cd Filter_min3PCRs_min2copies_12S/; mkdir for_seperatedPCRset
+		cp FilteredReads.fna for_seperatedPCRset/FilteredReads.fna; cd for_seperatedPCRset/
+		# copy the file "2.1_sum_reads_for_usearch.Rmd" to the folder "for_seperatedPCRset"
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.1_sum_reads_for_usearch.Rmd .
+			# Replace "min*PCRs_min*copies" with "min3PCRs_min2copies" in the file "2.1_sum_reads_for_usearch.R"
+			# run the codes from "2.1_sum_reads_for_usearch.Rmd" in RStudio to transform “FilteredReads.fna” to "Filter_ min3PCRs_min2copies_forusearch.fas"
+		# remove the sequence number, e.g. > 100: seqkit replace -p '^[0-9]+ ' -r ''
+			seqkit replace -p '^[0-9]+ ' -r '' Filter_min3PCRs_min2copies_forusearch.fas > Filter_min3PCRs_min2copies_forusearch2.fas
+			mv Filter_min3PCRs_min2copies_forusearch2.fas Filter_min3PCRs_min2copies_forusearch.fas
+		# UCHIME
+			vsearch --uchime_ref Filter_min3PCRs_min2copies_forusearch.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas --nonchimeras temp.fas
+			vsearch --uchime_denovo temp.fas --nonchimeras Filter_min3PCRs_min2copies_forusearch_nonchimeras.fas
+			seqkit replace -p ';' -r ' ;' Filter_min3PCRs_min2copies_forusearch_nonchimeras.fas > Filter_min3PCRs_min2copies_forusearch_nonchimeras_2.fas
+			mv Filter_min3PCRs_min2copies_forusearch_nonchimeras_2.fas Filter_min3PCRs_min2copies_forusearch_nonchimeras.fas
+			seqkit rename Filter_min3PCRs_min2copies_forusearch_nonchimeras.fas > Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas
+			seqkit replace -p ' [\w-]+ ' -r '' Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas > Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique_2.fas
+			mv Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique_2.fas Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas
+			seqkit replace -p '[\W]+;size' -r ';size' Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas > Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique_2.fas
+			mv Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique_2.fas Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas
+		# vsearch cluster to 99% OTUs and sort by size
+			vsearch --cluster_size Filter_min3PCRs_min2copies_forusearch_nonchimeras_unique.fas --sizein --sizeout --id 0.99 --sizeorder --centroids Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99.fas --uc Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99.uc
+			vsearch --sortbysize Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99.fas --output Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99_sorted.fas
+			mv Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99_sorted.fas Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99.fas
+		# Identifying spike-in OTUs, 305 of 66380 (0.46%)
+			vsearch --usearch_global Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/spikein12S_2022.fas --id 0.96 --iddef 1 --query_cov .9 --notmatched Filter_min3PCRs_min2copies_forusearch_nonchimeras_vsearch99_spikein_notMATCH.fas --userout match_list_spikein.txt -userfields query+target+id --fasta_width 0
+			rm -f temp.fas
+		# The OTUs generated using the min3PCRs_min2copies filtering condition should have only 1 OTU after matching with the spikein sequence, but actually 305 OTUs matched, these OTUs that are not 100% similar should be non-contaminating error sequences generated during the PCR or sequencing process, suggesting that the OTUs of real species in the samples would also have the same many error sequences, so the filtering conditions need to be improved
+		# Based on the matching results in match_list_spikein.txt, it can be inferred that to reduce the matching OTUs of the spike-in sequence to 1, the filtering condition needs to be increased to min3PCRs_min33copies
+
+
+# DAMe filter with all data —— min3PCRs_min33copies
+	cd analysis/DAMe_SORT_outputs_12S/
+	mkdir Filter_min3PCRs_min33copies_12S
+	python2 /Users/jiyinqiu/Downloads/DAMe-master-2/bin/filter.py -psInfo /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/PCRsetsInfo_12S.txt -x 6 -y 3 -p 42 -t 33 -l 75 -o Filter_min3PCRs_min33copies_12S
+	cd Filter_min3PCRs_min33copies_12S/; mkdir for_seperatedPCRset
+	cp FilteredReads.fna for_seperatedPCRset/FilteredReads.fna; cd for_seperatedPCRset/
+	# copy the file "2.1_sum_reads_for_usearch.Rmd" to the folder "for_seperatedPCRset"
+		cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.1_sum_reads_for_usearch.Rmd .
+		# Replace "min*PCRs_min*copies" with "min3PCRs_min33copies" in the file "2.1_sum_reads_for_usearch.R"
+		# run the codes from "2.1_sum_reads_for_usearch.Rmd" in RStudio to transform “FilteredReads.fna” to "Filter_ min3PCRs_min33copies_forusearch.fas"
+	# remove the sequence number, e.g. > 100: seqkit replace -p '^[0-9]+ ' -r ''
+		seqkit replace -p '^[0-9]+ ' -r '' Filter_min3PCRs_min33copies_forusearch.fas > Filter_min3PCRs_min33copies_forusearch2.fas
+		mv Filter_min3PCRs_min33copies_forusearch2.fas Filter_min3PCRs_min33copies_forusearch.fas
+	# UCHIME
+		vsearch --uchime_ref Filter_min3PCRs_min33copies_forusearch.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas --nonchimeras temp.fas
+		vsearch --uchime_denovo temp.fas --nonchimeras Filter_min3PCRs_min33copies_forusearch_nonchimeras.fas
+		seqkit replace -p ';' -r ' ;' Filter_min3PCRs_min33copies_forusearch_nonchimeras.fas > Filter_min3PCRs_min33copies_forusearch_nonchimeras_2.fas
+		mv Filter_min3PCRs_min33copies_forusearch_nonchimeras_2.fas Filter_min3PCRs_min33copies_forusearch_nonchimeras.fas
+		seqkit rename Filter_min3PCRs_min33copies_forusearch_nonchimeras.fas > Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas
+		seqkit replace -p ' [\w-]+ ' -r '' Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas > Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique_2.fas
+		mv Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique_2.fas Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas
+		seqkit replace -p '[\W]+;size' -r ';size' Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas > Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique_2.fas
+		mv Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique_2.fas Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas
+	# vsearch cluster to 99% OTUs and sort by size
+		vsearch --cluster_size Filter_min3PCRs_min33copies_forusearch_nonchimeras_unique.fas --sizein --sizeout --id 0.99 --sizeorder --centroids Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99.fas --uc Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99.uc
+		vsearch --sortbysize Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99.fas --output Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99_sorted.fas
+		mv Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99_sorted.fas Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99.fas
+	# Identifying spike-in OTUs, 1 of 4,360 (0.02%)
+		vsearch --usearch_global Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/spikein12S_2022.fas --id 0.96 --iddef 1 --query_cov .9 --notmatched Filter_min3PCRs_min33copies_forusearch_nonchimeras_vsearch99_spikein_notMATCH.fas --userout match_list_spikein.txt -userfields query+target+id --fasta_width 0
+		rm -f temp.fas
+
+
+# In order to remove as many erroneous sequences as possible, we chose "min3PCRs_min33copies" to filter the data based on the criterion that only 1 OTU is retained for spike-in sequence
+# But on the one hand, such strict filtering conditions are likely to remove sequences of species that are real but rare
+# On the other hand, some species can meet this condition in some samples to be retained, but are likely to be removed in other samples because they cannot meet the condition, and we want to retain these data that only appear in 1 or 2 PCRs, leaving the assessment of whether they are false positives (contamination) to the statistical occupancy model later on
+# So we run the DAMe filter with min1PCRs_min1copies as the parameter, and use the filtered data of "min3PCRs_min33copies" and the 12S reference database sequences of PROTAX as the reference to filter the output data of "min1PCRs_min1copies", to remove erroneous sequences on the one hand and to retain real sequences on the other (while retaining the presence of contamination, of course, but OccPlus should be able to tell the difference)
+
+# DAMe filter with all data —— min1PCRs_min1copies
+	cd analysis/DAMe_SORT_outputs_12S/
+	mkdir Filter_min1PCRs_min1copies_12S
+	python2 /Users/jiyinqiu/Downloads/DAMe-master-2/bin/filter.py -psInfo /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/PCRsetsInfo_12S_20240524.txt -x 6 -y 1 -p 42 -t 1 -l 75 -o Filter_min1PCRs_min1copies_12S
+	cd Filter_min1PCRs_min1copies_12S/; mkdir for_seperatedPCRset
+	# Preparation of reference data for filterin
+		# Since 12S_uchime_ref.fas is generated by adding the spike-in sequence to the 12S PROTAX reference database, so use 12S_uchime_ref.fas as Vertebrata.final_database.12S.fa here
+			cat /Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/Filter_min3PCRs_min33copies_12S/FilteredReads.fna /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas > ref_for_filtering.fas
+	# Because --usearch_global does not retain the information after the space in the IDs of the reads in the output file, have to first replace "\t" in FilteredReads.fna with "#"
+		cat FilteredReads.fna | tr '\t' '#' > FilteredReads_temp.fna
+	# Filter by matching
+		vsearch --usearch_global FilteredReads_temp.fna --db ref_for_filtering.fas --id 1.00 --iddef 1 --query_cov .9 --matched Filter_min3PCRs_min33copies_forusearch_temp.fas --fasta_width 0
+		cat Filter_min3PCRs_min33copies_forusearch_temp.fas | tr '#' '\t' > Filter_min3PCRs_min33copies_forusearch.fas
+		cp Filter_min3PCRs_min33copies_forusearch.fas for_seperatedPCRset/FilteredReads.fna; cd for_seperatedPCRset/
+	# copy the file "2.1_sum_reads_for_usearch.Rmd" to the folder "for_seperatedPCRset"
+		cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.1_sum_reads_for_usearch.Rmd .
+		# Replace "min*PCRs_min*copies" with "min1PCRs_min1copies" in the file "2.1_sum_reads_for_usearch.R"
+		# run the codes from "2.1_sum_reads_for_usearch.Rmd" in RStudio to transform “FilteredReads.fna” to "Filter_ min1PCRs_min1copies_forusearch.fas"
+	# remove the sequence number, e.g. > 100: seqkit replace -p '^[0-9]+ ' -r ''
+		seqkit replace -p '^[0-9]+ ' -r '' Filter_min1PCRs_min1copies_forusearch.fas > Filter_min1PCRs_min1copies_forusearch2.fas
+		mv Filter_min1PCRs_min1copies_forusearch2.fas Filter_min1PCRs_min1copies_forusearch.fas
+	# UCHIME
+		vsearch --uchime_ref Filter_min1PCRs_min1copies_forusearch.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/12S_uchime_ref.fas --nonchimeras temp.fas
+		vsearch --uchime_denovo temp.fas --nonchimeras Filter_min1PCRs_min1copies_forusearch_nonchimeras.fas
+		seqkit replace -p ';' -r ' ;' Filter_min1PCRs_min1copies_forusearch_nonchimeras.fas > Filter_min1PCRs_min1copies_forusearch_nonchimeras_2.fas
+		mv Filter_min1PCRs_min1copies_forusearch_nonchimeras_2.fas Filter_min1PCRs_min1copies_forusearch_nonchimeras.fas
+		seqkit rename Filter_min1PCRs_min1copies_forusearch_nonchimeras.fas > Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas
+		seqkit replace -p ' [\w-]+ ' -r '' Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas > Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique_2.fas
+		mv Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique_2.fas Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas
+		seqkit replace -p '[\W]+;size' -r ';size' Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas > Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique_2.fas
+		mv Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique_2.fas Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas
+	# vsearch cluster to 99% OTUs and sort by size
+		vsearch --cluster_size Filter_min1PCRs_min1copies_forusearch_nonchimeras_unique.fas --sizein --sizeout --id 0.99 --sizeorder --centroids Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99.fas --uc Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99.uc
+		vsearch --sortbysize Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99.fas --output Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99_sorted.fas
+		mv Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99_sorted.fas Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99.fas
+	# Identifying spike-in OTUs, 1 of 4,840 (0.02%)
+		# Note: The reference used for filtering data in the paper also added unpublished sequences of Gaoligong species, so more OTUs (4,859) were obtained.
+		vsearch --usearch_global Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99.fas --db /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/spikein12S_2022.fas --id 0.96 --iddef 1 --query_cov .9 --notmatched Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99_spikein_notMATCH.fas --userout match_list_spikein.txt -userfields query+target+id --fasta_width 0
+		rm -f temp.fas
+	# PROTAX
+		# run the GLG weighted Protax model on 12S OTUs. The trained model is in /Users/jiyinqiu/src/screenforbio-mbc-23GLG/
+			cd /Users/jiyinqiu/src/screenforbio-mbc-23GLG/
+			. ~/.linuxify; which sed # should show /usr/local/opt/gnu-sed/libexec/gnubin/sed
+			OTUS12S="/Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/Filter_min1PCRs_min1copies_12S/for_seperatedPCRset/Filter_min1PCRs_min1copies_forusearch_nonchimeras_vsearch99_spikein_notMATCH.fas"
+			bash weighted_protax_classify_otus.sh ${OTUS12S} 12S w_protaxmodels_GLG /Users/jiyinqiu/src/screenforbio-mbc-23GLG w_protaxout_alexdiana
+				# usage: bash weighted_protax_classify_otus.sh otus locus protaxdir screenforbio outdir
+				# where:
+				# otus is the (path to) the OTU fasta to be processed (suffix should be ".fa")
+				# locus is the target locus, must be one of: 12S, 16S, CYTB, COI. if you have more than one locus to analyse, run script once for each.
+				# protaxdir is the path to a directory containing weighted protax models and clean databases for all 4 loci
+				# screenforbio is the path to the screenforbio-mbc directory (must contain subdirectory protaxscripts)
+				# outdir is the basename to give the output directory (inside current)
+				# This took a total of 117.82 minutes
+		# copy the file "2.2_combine_protax_output_tables.Rmd" to the folder "for_seperatedPCRset"
+			cd /Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/Filter_min1PCRs_min1copies_12S/for_seperatedPCRset/
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.2_combine_protax_output_tables.Rmd .
+			# Replace "min*PCRs_min*copies" with "min1PCRs_min1copies" in the file "2.2_combine_protax_output_tables.Rmd"
+			# run the codes from "2.2_combine_protax_output_tables.Rmd" in RStudio to obtain “protaxout_12S_weighted.tsv”
+			mv /Users/jiyinqiu/src/screenforbio-mbc-23GLG/w_protaxout_alexdiana_12S /Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/Filter_min1PCRs_min1copies_12S/for_seperatedPCRset/
+		# Manually check PROTAX results and correct them if necessary
+	# Because data from independent PCRs are required for occupancy model analyses, this step is to generate 6 OTUs tables from 6 independent PCRs and to merge the PROTAX results into the tables
+		# copy the file "2.3_parse_uc_file_tidyverse.Rmd" to the folder "for_seperatedPCRset"
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.3_parse_uc_file_tidyverse.Rmd .
+		# Replace "min*PCRs_min*copies" with "min1PCRs_min1copies" in the file "2.3_parse_uc_file_tidyverse.R"
+		# Notes: remember to add "queryID	bestHit	bestHit_similarity" as the first new line in "match_list_spikein.txt" before run this Rmd file
+		# run the codes from "2.3_parse_uc_file_tidyverse.Rmd" in RStudio 
+	# Use the Rmd file "2.4_filter_otu_tables_20240528.Rmd" to generate the final OTUs summary table "OTUtable_12S_to_SP_GLG23_{date}.txt" for the following statistical analysis
+		# copy the file "2.3_parse_uc_file_tidyverse.Rmd" and the other needed files to the folder "for_seperatedPCRset"
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/scripts/2.4_filter_otu_tables.Rmd .
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/23GLG_Samples_info.txt .
+			cp /Users/jiyinqiu/src/2023GLG_eDNA_method_code/info/Vertebrata_class_order.txt .
+			# Vertebrata_class_order.txt is created from the results of PROTAX
+		# Change the date in the Rmd file to the day of the run and run it in Rstudio
+

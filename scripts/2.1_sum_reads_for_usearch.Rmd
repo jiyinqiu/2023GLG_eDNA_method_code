@@ -1,0 +1,44 @@
+## written by Doug, modified by JYQ on 27 May 2024
+## ----setup---------------------------------------------------------------------------------
+library(tidyverse)
+library(seqinr)
+library(here)
+library(glue)
+
+## ----read and format fasta-----------------------------------------------------------------
+fasta <- read.fasta(file = here("FilteredReads.fna"), as.string = TRUE, seqtype = "DNA", whole.header = TRUE)
+
+fastadf <- fasta %>% 
+  unlist(recursive = FALSE) %>% 
+  enframe(name = "name", value = "seq") %>% 
+  arrange(name)
+
+# "extra = "merge" argument is for when there are multiple, consecutive tab separators
+fastadf <- fastadf %>% 
+    separate(name, c("sample", "tags", "reads"), sep = "\t", 
+             remove = TRUE, extra = "merge") %>% 
+    select(-tags) %>% 
+    separate(reads, c("PCR1", "PCR2", "PCR3", "PCR4", "PCR5", "PCR6"), sep = "_", remove = TRUE) %>% 
+    mutate(across(starts_with("PCR"), ~ as.numeric(.))) %>% 
+    mutate(size = PCR1 + PCR2 + PCR3 + PCR4 + PCR5 + PCR6) %>% 
+    mutate(size = str_c(";size=", size)) %>% 
+    unite(col = "reads", PCR1, PCR2, PCR3, PCR4, PCR5, PCR6, sep = "_") %>% 
+    unite(col = "name", sample, reads, sep = "--") %>% 
+    unite(col = "name", name, size, sep = "")
+
+# add unique index to name
+fastadf$ID <- seq.int(nrow(fastadf))
+fastadf <- fastadf %>% 
+  unite(col = "name", ID, name, sep = " ")
+
+## ----write fasta---------------------------------------------------------------------------
+fastalist <- split(fastadf$seq, fastadf$name) # convert df to list
+
+# "Filter_min*PCRs_min*copies_forusearch.fas"
+
+write.fasta(sequences = fastalist, 
+            names = names(fastalist), 
+            file.out = here("Filter_min*PCRs_min*copies_forusearch.fas"), 
+            as.string = FALSE)
+
+

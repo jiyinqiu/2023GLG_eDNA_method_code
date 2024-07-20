@@ -1,0 +1,67 @@
+---
+title: "combine_protax_output_tables"
+author: "Douglas Yu", modified by JYQ
+date: "13/08/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Join the protax output files. The code is originally from ~/src/screenforbio-mbc-23GLG/combine_protax_output_tables.Rmd
+
+7 column headings
+"queryID", "taxID", "log_prob", "level", "taxon", "bestHit_similarity", "bestHit"
+
+```{r combine weighted 12S output files}
+library(tidyverse)
+library(fs)
+library(glue)
+library(magrittr)
+library(here)
+here()
+
+pathtoprotaxout <- "~/src/screenforbio-mbc-23GLG" # screenforbio folder
+pathtoprotax2 <- "w_protaxout_alexdiana_12S" # dir with protax outputs
+pathtoprotax_file <- "Filter_min*PCRs_min*copies_forusearch_nonchimeras_vsearch99_spikein_notMATCH.fas."
+
+w_protaxout_12S_class <- read_tsv(file.path(pathtoprotaxout, pathtoprotax2, paste0(pathtoprotax_file, "w_class_probs")), col_names = c("queryID", "taxID", "log_prob", "level", "class")) %>% 
+    mutate(prob_class = exp(log_prob)) %>% 
+    select(queryID, class, prob_class)
+w_protaxout_12S_order <- read_tsv(file.path(pathtoprotaxout, pathtoprotax2, paste0(pathtoprotax_file, "w_order_probs")), col_names = c("queryID", "taxID", "log_prob", "level", "order")) %>% 
+    mutate(prob_order = exp(log_prob)) %>% 
+    select(queryID, order, prob_order)
+w_protaxout_12S_family <- read_tsv(file.path(pathtoprotaxout, pathtoprotax2, paste0(pathtoprotax_file, "w_family_probs")), col_names = c("queryID", "taxID", "log_prob", "level", "family")) %>% 
+    mutate(prob_family = exp(log_prob)) %>% 
+    select(queryID, family, prob_family)
+w_protaxout_12S_genus <- read_tsv(file.path(pathtoprotaxout, pathtoprotax2, paste0(pathtoprotax_file, "w_genus_probs")), col_names = c("queryID", "taxID", "log_prob", "level", "genus")) %>% 
+    mutate(prob_genus = exp(log_prob)) %>% 
+    select(queryID, genus, prob_genus)
+w_protaxout_12S_species <- read.delim(file.path(pathtoprotaxout, pathtoprotax2, paste0(pathtoprotax_file, "w_species_probs_sim")), stringsAsFactors = FALSE, sep = " ", col.names = c("queryID", "taxID", "log_prob", "level", "species", "bestHit_similarity", "bestHit")) %>% 
+    mutate(prob_species = exp(log_prob)) %>% 
+    mutate(taxID = na_if(taxID, "")) %>% 
+    mutate(species = na_if(species, "")) %>% 
+    select(queryID, species, prob_species, bestHit_similarity, bestHit)
+
+w_protaxout_12S_all <- w_protaxout_12S_class %>% 
+    left_join(w_protaxout_12S_order) %>% 
+    left_join(w_protaxout_12S_family) %>% 
+    left_join(w_protaxout_12S_genus) %>% 
+    left_join(w_protaxout_12S_species) 
+
+w_protaxout_12S_all$protaxmod <- "weighted"
+
+```
+
+save protax tables to 
+"/Users/jiyinqiu/src/2023GLG_eDNA_method_code/analysis/DAMe_SORT_outputs_12S/Filter_min*PCRs_min*copies_12S/for_seperatedPCRset/OTUtables"
+
+```{r}
+fs::dir_create(here("OTUtables"))
+
+write_tsv(w_protaxout_12S_all, here("OTUtables", "protaxout_12S_weighted.tsv"))
+
+```
+
+
+
+
